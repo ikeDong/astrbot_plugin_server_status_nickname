@@ -135,6 +135,17 @@ class ServerStatusPlugin(Star):
     def _get_rest_block_reply(self) -> str:
         return str(self._cfg("rest_block_reply", "")).strip()
 
+    def _should_reply_rest_block(self, event: AstrMessageEvent) -> bool:
+        if not self._get_rest_block_reply():
+            return False
+        if (
+            event.get_message_type() == filter.EventMessageType.GROUP_MESSAGE
+            and self._cfg("rest_reply_only_when_mentioned", True)
+            and not event.is_at_or_wake_command
+        ):
+            return False
+        return True
+
     def _format_status_text(self, stats: dict | None = None) -> str:
         if self._is_rest_time():
             text = str(self._cfg("rest_fixed_text", DEFAULT_REST_TEXT)).strip()
@@ -311,34 +322,22 @@ class ServerStatusPlugin(Star):
 
     # ── Event handlers ──
 
-    @filter.event_message_type(filter.EventMessageType.ALL, priority=10000)
-    async def rest_time_message_interceptor(self, event: AstrMessageEvent):
-        """休息时段拦截普通消息，避免进入 LLM。"""
-        if not self._should_block_message_during_rest():
-            return
+    async def _track_group_from_event(self, event: AstrMessageEvent) -> bool:
+        """记录群聊上下文，休息拦截前也要执行，否则定时昵称任务拿不到 client。"""
+        if event.get_message_type() != filter.EventMessageType.GROUP_MESSAGE:
+            return False
 
-        if self._is_rest_block_command_allowed(event):
-            return
-
-        reply = self._get_rest_block_reply()
-        if reply:
-            await event.send(event.plain_result(reply))
-        event.stop_event()
-
-    @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
-    async def on_group_message(self, event: AstrMessageEvent):
-        """收到群消息时注册群组，后续由定时器自动更新。"""
         client = self._get_client_from_event(event)
         if not client:
-            return
+            return False
         try:
             self_id = int(event.message_obj.self_id)
         except (AttributeError, ValueError):
-            return
+            return False
 
         group_id = event.get_group_id()
         if not group_id:
-            return
+            return False
 
         if group_id not in self.tracked_groups:
             umo = getattr(event, "unified_msg_origin", None)
@@ -351,6 +350,33 @@ class ServerStatusPlugin(Star):
         else:
             self.tracked_groups[group_id]["client"] = client
             self.tracked_groups[group_id]["self_id"] = self_id
+        return True
+
+    @filter.event_message_type(filter.EventMessageType.ALL, priority=10000)
+    async def rest_time_message_interceptor(self, event: AstrMessageEvent):
+        """休息时段拦截普通消息，避免进入 LLM。"""
+        if not self._should_block_message_during_rest():
+            return
+
+        tracked = await self._track_group_from_event(event)
+        if tracked:
+            # 休息拦截会阻止普通群消息进入后续 handler，因此这里顺手刷新一次固定昵称。
+            group_id = event.get_group_id()
+            info = self.tracked_groups.get(group_id)
+            if group_id and info and self._is_group_allowed(group_id):
+                await self._update_nickname(info["client"], group_id, info["self_id"], None)
+
+        if self._is_rest_block_command_allowed(event):
+            return
+
+        if self._should_reply_rest_block(event):
+            await event.send(event.plain_result(self._get_rest_block_reply()))
+        event.stop_event()
+
+    @filter.event_message_type(filter.EventMessageType.GROUP_MESSAGE)
+    async def on_group_message(self, event: AstrMessageEvent):
+        """收到群消息时注册群组，后续由定时器自动更新。"""
+        await self._track_group_from_event(event)
 
     # ── Commands ──
 

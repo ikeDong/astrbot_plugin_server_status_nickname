@@ -80,5 +80,11 @@
     "type": "string",
     "default": "",
     "hint": "消息被拦截时发送的提示。留空则静默拦截"
+  },
+  "rest_reply_only_when_mentioned": {
+    "description": "群聊休息回复仅在艾特时发送",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后，休息时段拦截仍会拦截群内所有普通消息，但只有艾特机器人或唤醒机器人时才发送自定义休息回复，避免群里任何人说话都触发回复"
   }
 }

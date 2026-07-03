@@ -78,6 +78,7 @@ class ServerStatusPlugin(Star):
                 minutes=interval,
                 id="job_update_nickname",
             )
+            self._schedule_rest_boundary_jobs()
             self.scheduler.start()
             logger.info(f"定时任务调度器已启动，昵称更新间隔: {interval} 分钟。")
         except Exception as e:
@@ -109,6 +110,38 @@ class ServerStatusPlugin(Star):
         if hour > 23 or minute > 59:
             return None
         return hour * 60 + minute
+
+    def _parse_time_hour_minute(self, value: str):
+        point = self._parse_time_point(value)
+        if point is None:
+            return None
+        return divmod(point, 60)
+
+    def _schedule_rest_boundary_jobs(self):
+        if not self._cfg("rest_mode_enabled", False):
+            return
+        rest_start = self._parse_time_hour_minute(self._cfg("rest_start_time", "23:00"))
+        rest_end = self._parse_time_hour_minute(self._cfg("rest_end_time", "07:00"))
+        if rest_start is None or rest_end is None or rest_start == rest_end:
+            return
+        if rest_start:
+            self.scheduler.add_job(
+                self._scheduled_nickname_update,
+                "cron",
+                hour=rest_start[0],
+                minute=rest_start[1],
+                id="job_rest_start_nickname",
+                replace_existing=True,
+            )
+        if rest_end:
+            self.scheduler.add_job(
+                self._scheduled_nickname_update,
+                "cron",
+                hour=rest_end[0],
+                minute=rest_end[1],
+                id="job_rest_end_nickname",
+                replace_existing=True,
+            )
 
     def _is_rest_time(self, now: datetime | None = None) -> bool:
         if not self._cfg("rest_mode_enabled", False):
@@ -144,13 +177,26 @@ class ServerStatusPlugin(Star):
     def _get_rest_block_reply(self) -> str:
         return str(self._cfg("rest_block_reply", "")).strip()
 
+    def _is_bot_mentioned(self, event: AstrMessageEvent) -> bool:
+        try:
+            self_id = str(event.message_obj.self_id)
+            for comp in event.get_messages():
+                comp_type = str(getattr(comp, "type", "")).lower()
+                comp_name = comp.__class__.__name__.lower()
+                qq = str(getattr(comp, "qq", ""))
+                if (comp_name == "at" or comp_type.endswith("at")) and qq == self_id:
+                    return True
+        except Exception:
+            return False
+        return False
+
     def _should_reply_rest_block(self, event: AstrMessageEvent) -> bool:
         if not self._get_rest_block_reply():
             return False
         if (
-            event.get_message_type() == filter.EventMessageType.GROUP_MESSAGE
+            event.get_group_id()
             and self._cfg("rest_reply_only_when_mentioned", True)
-            and not event.is_at_or_wake_command
+            and not self._is_bot_mentioned(event)
         ):
             return False
         return True
@@ -333,7 +379,8 @@ class ServerStatusPlugin(Star):
 
     async def _track_group_from_event(self, event: AstrMessageEvent) -> bool:
         """记录群聊上下文，休息拦截前也要执行，否则定时昵称任务拿不到 client。"""
-        if event.get_message_type() != filter.EventMessageType.GROUP_MESSAGE:
+        group_id = event.get_group_id()
+        if not group_id:
             return False
 
         client = self._get_client_from_event(event)
@@ -344,10 +391,6 @@ class ServerStatusPlugin(Star):
         except (AttributeError, ValueError):
             return False
 
-        group_id = event.get_group_id()
-        if not group_id:
-            return False
-
         if group_id not in self.tracked_groups:
             umo = getattr(event, "unified_msg_origin", None)
             self.tracked_groups[group_id] = {
@@ -356,6 +399,9 @@ class ServerStatusPlugin(Star):
                 "umo": umo,
             }
             logger.info(f"已注册群 {group_id} (UMO: {umo})，定时器将自动更新昵称。")
+            if self._is_group_allowed(group_id):
+                stats = await self._get_stats_for_nickname()
+                await self._update_nickname(client, group_id, self_id, stats)
         else:
             self.tracked_groups[group_id]["client"] = client
             self.tracked_groups[group_id]["self_id"] = self_id

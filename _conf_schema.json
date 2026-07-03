@@ -1,0 +1,84 @@
+{
+  "mode": {
+    "description": "群组过滤模式",
+    "type": "string",
+    "options": [
+      "whitelist",
+      "blacklist"
+    ],
+    "labels": [
+      "白名单模式",
+      "黑名单模式"
+    ],
+    "default": "whitelist",
+    "hint": "白名单：仅在指定群聊中显示状态；黑名单：在除指定群聊外的所有群聊中显示状态"
+  },
+  "group_list": {
+    "description": "群组列表",
+    "type": "list",
+    "default": [],
+    "hint": "根据过滤模式填入群号。白名单模式下仅这些群生效，黑名单模式下这些群被排除",
+    "items": {
+      "type": "string"
+    }
+  },
+  "nickname_template": {
+    "description": "昵称状态文案模板",
+    "type": "string",
+    "default": "理智使用{cpu_percent}% 脑容量使用{mem_percent}%",
+    "hint": "可用变量: {cpu_percent} CPU占用%, {mem_percent} 内存占用%, {mem_used_gb} 已用内存GB, {mem_total_gb} 总内存GB, {mem_used_mb} 已用内存MB, {mem_total_mb} 总内存MB。例: CPU:{cpu_percent}% 内存:{mem_used_gb}/{mem_total_gb}GB"
+  },
+  "update_interval": {
+    "description": "定时更新间隔（分钟）",
+    "type": "float",
+    "default": 5,
+    "slider": {
+      "min": 1,
+      "max": 60,
+      "step": 0.1
+    },
+    "hint": "定时器自动更新昵称的间隔时间，建议不低于 3 分钟以避免频繁调用 API"
+  },
+  "rest_mode_enabled": {
+    "description": "休息时段固定昵称显示",
+    "type": "bool",
+    "default": false,
+    "hint": "开启后，在指定时间段内不显示 CPU/内存状态，而显示固定文案"
+  },
+  "rest_start_time": {
+    "description": "休息时段开始时间",
+    "type": "string",
+    "default": "23:00",
+    "hint": "格式 HH:MM，例如 23:00。支持跨天时段"
+  },
+  "rest_end_time": {
+    "description": "休息时段结束时间",
+    "type": "string",
+    "default": "07:00",
+    "hint": "格式 HH:MM，例如 07:00。若开始时间晚于结束时间，则视为跨天"
+  },
+  "rest_fixed_text": {
+    "description": "休息时段固定文案",
+    "type": "string",
+    "default": "Zz休息中~",
+    "hint": "休息时段内昵称后缀显示的固定文字，例如 Zz休息中~"
+  },
+  "rest_block_messages": {
+    "description": "休息时段拦截消息进入 LLM",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后，当 rest_mode_enabled 生效且当前处于休息时段时，普通消息会被直接拦截，不再进入 LLM"
+  },
+  "rest_allow_commands": {
+    "description": "休息时段放行指令",
+    "type": "bool",
+    "default": true,
+    "hint": "开启后，休息时段仍放行以 / 或 ／ 开头的指令，避免无法关闭或调整插件配置"
+  },
+  "rest_block_reply": {
+    "description": "休息时段拦截回复",
+    "type": "string",
+    "default": "",
+    "hint": "消息被拦截时发送的提示。留空则静默拦截"
+  }
+}

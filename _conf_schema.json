@@ -81,6 +81,15 @@
     "default": "",
     "hint": "消息被拦截时发送的提示。留空则静默拦截"
   },
+  "rest_block_whitelist_ids": {
+    "description": "休息时段消息拦截白名单用户ID",
+    "type": "list",
+    "default": [],
+    "hint": "填入用户ID。列表中的用户在休息时段不会被拦截，消息仍可进入 LLM",
+    "items": {
+      "type": "string"
+    }
+  },
   "rest_reply_only_when_mentioned": {
     "description": "群聊休息回复仅在艾特时发送",
     "type": "bool",

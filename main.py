@@ -126,6 +126,15 @@ class ServerStatusPlugin(Star):
     def _should_block_message_during_rest(self) -> bool:
         return bool(self._cfg("rest_block_messages", True)) and self._is_rest_time()
 
+    def _is_rest_block_whitelist_sender(self, event: AstrMessageEvent) -> bool:
+        whitelist = self._cfg("rest_block_whitelist_ids", [])
+        if not isinstance(whitelist, list):
+            return False
+        sender_id = str(event.get_sender_id() or "").strip()
+        if not sender_id:
+            return False
+        return sender_id in {str(item).strip() for item in whitelist if str(item).strip()}
+
     def _is_rest_block_command_allowed(self, event: AstrMessageEvent) -> bool:
         if not self._cfg("rest_allow_commands", True):
             return False
@@ -356,6 +365,9 @@ class ServerStatusPlugin(Star):
     async def rest_time_message_interceptor(self, event: AstrMessageEvent):
         """休息时段拦截普通消息，避免进入 LLM。"""
         if not self._should_block_message_during_rest():
+            return
+
+        if self._is_rest_block_whitelist_sender(event):
             return
 
         tracked = await self._track_group_from_event(event)
